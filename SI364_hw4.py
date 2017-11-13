@@ -20,7 +20,7 @@ app.config['SECRET_KEY'] = 'hardtoguessstringfromsi364thisisnotsupersecure'
 ## TODO SI364: Create a database in postgresql in the code line below, and fill in your app's database URI. It should be of the format: postgresql://localhost/YOUR_DATABASE_NAME
 
 ## Your Postgres database should be your uniqname, plus HW4, e.g. "jczettaHW4" or "maupandeHW4"
-app.config["SQLALCHEMY_DATABASE_URI"] = ""
+app.config["SQLALCHEMY_DATABASE_URI"] = "postgresql://localhost/ameliagcHW4"
 app.config['SQLALCHEMY_COMMIT_ON_TEARDOWN'] = True
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
@@ -48,27 +48,47 @@ manager.add_command("shell", Shell(make_context=make_shell_context))
 
 ## The following relationships should exist between them:
 # Tweet:User - Many:One
-# Tweet:Hashtag - Many:Many
+# Tweet:Hashtag - Many:Many # going to need assosciation table
 
 # - Tweet
 ## -- id (Primary Key)
 ## -- text (String, up to 285 chars)
 ## -- user_id (Integer, ID of user posted)
 
+class Tweet(db.Model):
+    __tablename__ = "tweets"
+    id = db.Column(db.Integer, primary_key=True)
+    text = db.Column(db.String(285))
+    user_id = db.Column(db.Integer)
+
+
 # - User
 ## -- id (Primary Key)
 ## -- twitter_username (String, up to 64 chars) (Unique=True)
+
+class User(db.Model):
+    __tablename__ = "user"
+    id = db.Column(db.Integer, primary_key=True)
+    twitter_username = db.Column(db.String(64), unique=True)
 
 # - Hashtag
 ## -- id (Primary Key)
 ## -- text (Unique=True)
 
+class Hashtag(db.Model):
+    __tablename__ = "hashtag"
+    id = db.Column(db.Integer, primary_key=True)
+    text = db.Column(db.String(64), unique=True)
+    tweet_id = db.Column(db.Integer, db.ForeignKey("tweets.id"))
+    hashtag_id = db.Column(db.Integer, db.ForeignKey("hashtag.id"))
+
 # Association Table: Tweet_Hashtag
 # -- tweet_id
 # -- hashtag_id
 
-## NOTE: You'll have to set up database relationship code in either the Tweet table or the Hashtag table so that the association table for that many-many relationship will work properly!
+Tweet_Hashtag = db.Table('Tweet_Hashtag',db.Column('tweet_id',db.Integer, db.ForeignKey('tweets.id')),db.Column('hashtag_id',db.Integer, db.ForeignKey('hashtag.id')))
 
+## NOTE: You'll have to set up database relationship code in either the Tweet table or the Hashtag table so that the association table for that many-many relationship will work properly!
 
 ##### Set up Forms #####
 
@@ -79,8 +99,10 @@ manager.add_command("shell", Shell(make_context=make_shell_context))
 ## -- a list of comma-separated hashtags it should have
 
 class TweetForm(FlaskForm):
-    pass
-
+    text = StringField("What is the text of the tweet?", validators=[Required()])
+    username = StringField("What is the username of the user who posted it?", validators=[Required()])
+    hashtags = StringField("What hashtags should it contain?", validators=[Required()])
+    submit = SubmitField('Submit')
 
 ##### Helper functions
 
@@ -95,7 +117,35 @@ class TweetForm(FlaskForm):
 
 ## NOTE: If you choose to organize your code differently so it has the same effect of not encounting duplicates / identity errors, that is OK. But writing separate functions that may invoke one another is our primary suggestion.
 
+def get_or_create_tweets(db_session, tweets):
+    tweet_texts = db_session.query(Tweet).filter_by(text=tweets).first()
+    if tweet_texts:
+        return tweet_texts
+    else:
+        tweet_texts = Tweet(text=tweets)
+        db_session.add(tweet_texts)
+        db_session.commit()
+        return tweet_texts
 
+def get_or_create_users(db_session, user):
+    t_user = db_session.query(User).filter_by(username=user).first()
+    if t_user:
+        return t_user
+    else:
+        t_user = User(username=user)
+        db_session.add(t_user)
+        db_session.commit()
+        return t_user
+
+def get_or_create_hashtags(db_session, hashtag):
+    hashtags = db_session.query(Hashtag).filter_by(text=hashtag).first()
+    if hashtags:
+        return hashtags
+    else:
+        hashtags = Hashtag(hashtag=hashtags)
+        db_session.add(hashtags)
+        db_session.commit()
+        return hashtags
 
 
 
@@ -115,7 +165,18 @@ def internal_server_error(e):
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
-    pass
+    tweets = Tweet.query.all()
+    users = User.query.all
+    num_tweets = len(tweets)
+    form = TweetForm()
+
+    if form.validate_on_submit():
+        if db.session.query(Tweet).filter_by(tweet_text=form.text.data).first():
+            flash("You've already saved that tweet!")
+        get_or_create_tweets(db.session, form.tweet_text.data, form.username.data)
+        return redirect(url_for('see_all'))
+
+    return render_template('index.html', form=form, num_tweets=num_tweets)
     ## TODO SI364: Fill in the index route as described.
     # A template index.html has been created and provided to render what this route needs to show -- YOU just need to fill in this view function so it will work.
     ## HINT: Check out the index.html template to make sure you're sending it the data it needs.
@@ -134,18 +195,25 @@ def index():
 
 @app.route('/all_tweets')
 def see_all_tweets():
-    pass
-
     # TODO SI364: Fill in this view function so that it can successfully render the template all_tweets.html, which is provided.
     ## HINT: Check out the all_songs and all_artists routes in the songs app you saw in class.
-
+    all_tweets = []
+    all_tweets = Tweet.query.all()
+    for t in all_tweets:
+        user = User.query.filter_by(id=user_id).first()
+        all_tweets.append((t.text, user.username))
+    return render_template('all_tweets.html', all_tweets=all_tweets)
 
 @app.route('/all_users')
 def see_all_users():
+    all_users = []
+    all_users = User.query.all()
+    for u in all_users:
+        all_users.append((u.twitter_username))
+    return render_template('all_users.html', all_users=all_users)
 
     # TODO SI364: Fill in this view function so it can successfully render the template all_users.html, which is provided. (See instructions for more detail.)
     ## HINT: Check out the all_songs and all_artists routes in the songs app you saw in class.
-
 
 if __name__ == '__main__':
     db.create_all()
